@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>고급 미로 게임 - 몬스터 AI 제외</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      text-align: center;
+      background-color: #f8f9fa;
+      transition: background-color 0.5s;
+    }
+    #controls {
+      margin-top: 20px;
+    }
+    #maze {
+      margin: 20px auto;
+      display: grid;
+      gap: 2px;
+      width: max-content;
+    }
+    .cell {
+      width: 30px;
+      height: 30px;
+      background: white;
+      border: 1px solid #ccc;
+    }
+    .wall { background: #6c757d; }
+    .player { background: #0d6efd; }
+    .goal { background: #198754; }
+    .item { background: gold; }
+    .item-speed { background: #fd7e14; }
+    .item-teleport { background: #6610f2; }
+    #status { margin-top: 10px; font-size: 18px; }
+    #ranking { margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>고급 미로 게임 🧩</h1>
+  <div id="controls">
+    <label for="level">난이도:</label>
+    <select id="level">
+      <option value="easy">쉬움 (9x9)</option>
+      <option value="medium">보통 (15x15)</option>
+      <option value="hard">어려움 (21x21)</option>
+    </select>
+    <button onclick="startGame()">게임 시작</button>
+    <button onclick="resetRanking()">🏁 랭킹 초기화</button>
+    <div id="timer">⏱️ 시간: 0s</div>
+    <div id="score">🏆 점수: 0</div>
+    <div id="status"></div>
+  </div>
+  <div id="maze"></div>
+  <div id="ranking">
+    <h2>🏅 랭킹</h2>
+    <ol id="rankingList"></ol>
+  </div>
+
+<script>
+  let mazeSize = 9;
+  let maze = [];
+  let playerX = 1, playerY = 1;
+  let goalX, goalY;
+  let timer = 0;
+  let timerLimit = 60;
+  let timerInterval;
+  let gameStarted = false;
+  let wallBypass = false;
+  let speedBoost = false;
+  let stage = 0;
+  let themes = [
+    { bg: '#f8f9fa', wall: '#6c757d' },
+    { bg: '#e3f2fd', wall: '#0d6efd' },
+    { bg: '#fefae0', wall: '#d4a373' },
+    { bg: '#f8d7da', wall: '#842029' }
+  ];
+
+  function setLevel(size) {
+    mazeSize = size % 2 === 0 ? size + 1 : size;
+  }
+
+  function applyTheme() {
+    const theme = themes[stage % themes.length];
+    document.body.style.backgroundColor = theme.bg;
+    document.querySelectorAll('.wall').forEach(w => w.style.backgroundColor = theme.wall);
+  }
+
+  function startGame() {
+    const level = document.getElementById("level").value;
+    if (level === "easy") setLevel(9);
+    else if (level === "medium") setLevel(15);
+    else if (level === "hard") setLevel(21);
+
+    stage++;
+    generateMaze();
+    renderMaze();
+    applyTheme();
+    timer = 0;
+    wallBypass = false;
+    speedBoost = false;
+    document.getElementById("timer").textContent = `⏱️ 시간: 0s / 제한: ${timerLimit}s`;
+    document.getElementById("score").textContent = `🏆 점수: 0`;
+    document.getElementById("status").textContent = "";
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      timer++;
+      document.getElementById("timer").textContent = `⏱️ 시간: ${timer}s / 제한: ${timerLimit}s`;
+      if (timer >= timerLimit) endGame(false);
+    }, speedBoost ? 500 : 1000);
+    gameStarted = true;
+  }
+
+  function generateMaze() {
+    maze = Array.from({ length: mazeSize }, () => Array(mazeSize).fill("W"));
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+    function carve(x, y) {
+      maze[y][x] = " ";
+      for (let [dx, dy] of shuffle([[0, -2], [0, 2], [-2, 0], [2, 0]])) {
+        const nx = x + dx, ny = y + dy;
+        if (ny > 0 && ny < mazeSize - 1 && nx > 0 && nx < mazeSize - 1 && maze[ny][nx] === "W") {
+          maze[y + dy / 2][x + dx / 2] = " ";
+          carve(nx, ny);
+        }
+      }
+    }
+    carve(1, 1);
+    playerX = 1; playerY = 1;
+    for (let y = mazeSize - 2; y > 0; y--) {
+      for (let x = mazeSize - 2; x > 0; x--) {
+        if (maze[y][x] === " ") {
+          goalX = x; goalY = y;
+          maze[y][x] = "G";
+          break;
+        }
+      }
+      if (goalX) break;
+    }
+
+    ["I", "S", "T"].forEach(t => placeItem(t));
+  }
+
+  function placeItem(type) {
+    let placed = false;
+    while (!placed) {
+      let x = Math.floor(Math.random() * mazeSize);
+      let y = Math.floor(Math.random() * mazeSize);
+      if (maze[y][x] === " ") {
+        maze[y][x] = type;
+        placed = true;
+      }
+    }
+  }
+
+  function renderMaze() {
+    const container = document.getElementById("maze");
+    container.style.gridTemplateColumns = `repeat(${mazeSize}, 30px)`;
+    container.innerHTML = "";
+
+    for (let y = 0; y < mazeSize; y++) {
+      for (let x = 0; x < mazeSize; x++) {
+        const cell = document.createElement("div");
+        cell.classList.add("cell");
+        const val = maze[y][x];
+        if (val === "W") cell.classList.add("wall");
+        else if (val === "G") cell.classList.add("goal");
+        else if (val === "I") cell.classList.add("item");
+        else if (val === "S") cell.classList.add("item-speed");
+        else if (val === "T") cell.classList.add("item-teleport");
+
+        if (x === playerX && y === playerY) {
+          cell.classList.add("player");
+        }
+        container.appendChild(cell);
+      }
+    }
+  }
+
+  function move(dx, dy) {
+    if (!gameStarted) return;
+    const newX = playerX + dx;
+    const newY = playerY + dy;
+    if (newX < 0 || newY < 0 || newX >= mazeSize || newY >= mazeSize) return;
+
+    const cell = maze[newY][newX];
+    if (cell === "W" && !wallBypass) return;
+
+    if (cell === "I") wallBypass = true;
+    else if (cell === "S") {
+      speedBoost = true;
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        timer++;
+        document.getElementById("timer").textContent = `⏱️ 시간: ${timer}s / 제한: ${timerLimit}s`;
+        if (timer >= timerLimit) endGame(false);
+      }, 500);
+    } else if (cell === "T") teleportPlayer();
+
+    maze[newY][newX] = " ";
+    playerX = newX;
+    playerY = newY;
+    renderMaze();
+
+    if (playerX === goalX && playerY === goalY) {
+      endGame(true);
+      setTimeout(startGame, 1000);
+    }
+  }
+
+  function teleportPlayer() {
+    let found = false;
+    while (!found) {
+      const x = Math.floor(Math.random() * mazeSize);
+      const y = Math.floor(Math.random() * mazeSize);
+      if (maze[y][x] === " ") {
+        playerX = x;
+        playerY = y;
+        found = true;
+      }
+    }
+  }
+
+  function endGame(won) {
+    gameStarted = false;
+    clearInterval(timerInterval);
+    const score = won ? Math.max(1000 - timer * 10 + stage * 100, 0) : 0;
+    document.getElementById("status").textContent = won ? `🎉 성공! 점수: ${score}` : "😵 실패!";
+    document.getElementById("score").textContent = `🏆 점수: ${score}`;
+    saveRanking(score);
+  }
+
+  function saveRanking(score) {
+    const rankings = JSON.parse(localStorage.getItem("mazeRankings") || "[]");
+    rankings.push(score);
+    rankings.sort((a, b) => b - a);
+    localStorage.setItem("mazeRankings", JSON.stringify(rankings.slice(0, 5)));
+    displayRanking();
+  }
+
+  function resetRanking() {
+    localStorage.removeItem("mazeRankings");
+    displayRanking();
+  }
+
+  function displayRanking() {
+    const rankings = JSON.parse(localStorage.getItem("mazeRankings") || "[]");
+    const list = document.getElementById("rankingList");
+    list.innerHTML = "";
+    rankings.forEach((s, i) => {
+      const li = document.createElement("li");
+      li.textContent = `${i + 1}위: ${s}점`;
+      list.appendChild(li);
+    });
+  }
+
+  document.addEventListener("keydown", e => {
+    switch (e.key) {
+      case "ArrowUp": move(0, -1); break;
+      case "ArrowDown": move(0, 1); break;
+      case "ArrowLeft": move(-1, 0); break;
+      case "ArrowRight": move(1, 0); break;
+    }
+  });
+
+  displayRanking();
+</script>
+</body>
+</html>
