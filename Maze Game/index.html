@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>고급 미로 게임 - 몬스터 AI 제외</title>
+  <title>미로 게임</title>
   <style>
     body {
       font-family: 'Courier New', monospace;
@@ -28,15 +28,12 @@
     .wall { background: #6c757d; }
     .player { background: #0d6efd; }
     .goal { background: #198754; }
-    .item { background: gold; }
-    .item-speed { background: #fd7e14; }
-    .item-teleport { background: #6610f2; }
     #status { margin-top: 10px; font-size: 18px; }
     #ranking { margin-top: 20px; }
   </style>
 </head>
 <body>
-  <h1>고급 미로 게임 🧩</h1>
+  <h1>미로 게임 🧩</h1>
   <div id="controls">
     <label for="level">난이도:</label>
     <select id="level">
@@ -65,8 +62,6 @@
   let timerLimit = 60;
   let timerInterval;
   let gameStarted = false;
-  let wallBypass = false;
-  let speedBoost = false;
   let stage = 0;
   let themes = [
     { bg: '#f8f9fa', wall: '#6c757d' },
@@ -96,8 +91,6 @@
     renderMaze();
     applyTheme();
     timer = 0;
-    wallBypass = false;
-    speedBoost = false;
     document.getElementById("timer").textContent = `⏱️ 시간: 0s / 제한: ${timerLimit}s`;
     document.getElementById("score").textContent = `🏆 점수: 0`;
     document.getElementById("status").textContent = "";
@@ -106,7 +99,7 @@
       timer++;
       document.getElementById("timer").textContent = `⏱️ 시간: ${timer}s / 제한: ${timerLimit}s`;
       if (timer >= timerLimit) endGame(false);
-    }, speedBoost ? 500 : 1000);
+    }, 1000);
     gameStarted = true;
   }
 
@@ -141,20 +134,6 @@
       }
       if (goalX) break;
     }
-
-    ["I", "S", "T"].forEach(t => placeItem(t));
-  }
-
-  function placeItem(type) {
-    let placed = false;
-    while (!placed) {
-      let x = Math.floor(Math.random() * mazeSize);
-      let y = Math.floor(Math.random() * mazeSize);
-      if (maze[y][x] === " ") {
-        maze[y][x] = type;
-        placed = true;
-      }
-    }
   }
 
   function renderMaze() {
@@ -169,10 +148,6 @@
         const val = maze[y][x];
         if (val === "W") cell.classList.add("wall");
         else if (val === "G") cell.classList.add("goal");
-        else if (val === "I") cell.classList.add("item");
-        else if (val === "S") cell.classList.add("item-speed");
-        else if (val === "T") cell.classList.add("item-teleport");
-
         if (x === playerX && y === playerY) {
           cell.classList.add("player");
         }
@@ -186,43 +161,20 @@
     const newX = playerX + dx;
     const newY = playerY + dy;
     if (newX < 0 || newY < 0 || newX >= mazeSize || newY >= mazeSize) return;
+    if (maze[newY][newX] === "W") return; // 벽은 통과 불가
 
-    const cell = maze[newY][newX];
-    if (cell === "W" && !wallBypass) return;
+    if (maze[newY][newX] === "G") {
+      playerX = newX;
+      playerY = newY;
+      renderMaze();
+      endGame(true);
+      setTimeout(startGame, 1000);
+      return;
+    }
 
-    if (cell === "I") wallBypass = true;
-    else if (cell === "S") {
-      speedBoost = true;
-      clearInterval(timerInterval);
-      timerInterval = setInterval(() => {
-        timer++;
-        document.getElementById("timer").textContent = `⏱️ 시간: ${timer}s / 제한: ${timerLimit}s`;
-        if (timer >= timerLimit) endGame(false);
-      }, 500);
-    } else if (cell === "T") teleportPlayer();
-
-    maze[newY][newX] = " ";
     playerX = newX;
     playerY = newY;
     renderMaze();
-
-    if (playerX === goalX && playerY === goalY) {
-      endGame(true);
-      setTimeout(startGame, 1000);
-    }
-  }
-
-  function teleportPlayer() {
-    let found = false;
-    while (!found) {
-      const x = Math.floor(Math.random() * mazeSize);
-      const y = Math.floor(Math.random() * mazeSize);
-      if (maze[y][x] === " ") {
-        playerX = x;
-        playerY = y;
-        found = true;
-      }
-    }
   }
 
   function endGame(won) {
