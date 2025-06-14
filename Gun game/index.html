@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gun Shooting Game</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(to bottom right, #1f1c2c, #928dab);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      margin: 20px 0;
+      font-size: 36px;
+      text-shadow: 2px 2px 6px #000;
+    }
+
+    #overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 99;
+    }
+
+    #overlay input {
+      padding: 10px;
+      margin: 10px;
+      font-size: 18px;
+      border-radius: 8px;
+      border: none;
+      width: 200px;
+    }
+
+    .difficulty-btn {
+      margin: 5px;
+      padding: 10px 20px;
+      font-size: 18px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .difficulty-btn:hover {
+      background-color: #2980b9;
+    }
+
+    #game {
+      position: relative;
+      width: 800px;
+      height: 500px;
+      border-radius: 12px;
+      overflow: hidden;
+      margin: 20px 0;
+      background-size: cover;
+      background-position: center;
+      box-shadow: 0 0 15px rgba(0,0,0,0.5);
+      border: 3px solid #fff;
+      cursor: crosshair;
+    }
+
+    .target {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      background: crimson;
+      border-radius: 50%;
+      box-shadow: 0 0 10px rgba(255, 0, 0, 0.7);
+    }
+
+    .bullet {
+      position: absolute;
+      width: 10px;
+      height: 4px;
+      background: yellow;
+    }
+
+    #cursor {
+      position: absolute;
+      width: 100%;
+      height: 2px;
+      background: lime;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    #hud {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+
+    #scoreboard {
+      width: 300px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 15px;
+      text-align: center;
+      box-shadow: 0 0 8px #000;
+    }
+
+    #scoreboard h2 {
+      margin-top: 0;
+      font-size: 24px;
+    }
+
+    #scoreboard ol {
+      padding-left: 0;
+      list-style: none;
+    }
+
+    #scoreboard li {
+      font-size: 18px;
+      margin: 6px 0;
+    }
+
+    #resetBtn, #restartBtn {
+      margin-top: 10px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: #e74c3c;
+      color: white;
+      font-size: 16px;
+    }
+
+    #gameover {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      font-size: 40px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 20;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔫 Gun Shooting Game</h1>
+
+  <div id="overlay">
+    <h2>닉네임과 난이도 선택</h2>
+    <input id="nameInput" type="text" placeholder="닉네임 입력" />
+    <div>
+      <button class="difficulty-btn" data-mode="easy">쉬움</button>
+      <button class="difficulty-btn" data-mode="normal">보통</button>
+      <button class="difficulty-btn" data-mode="hard">어려움</button>
+    </div>
+  </div>
+
+  <div id="hud">
+    <div>점수: <span id="score">0</span></div>
+    <div>레벨: <span id="level">1</span></div>
+    <div>남은 시간: <span id="timer">60</span>초</div>
+  </div>
+
+  <div id="game">
+    <div id="cursor"></div>
+  </div>
+
+  <div id="scoreboard">
+    <h2>🏆 스코어 보드</h2>
+    <ol id="rankingList"></ol>
+    <button id="resetBtn">기록 초기화</button>
+    <button id="restartBtn" style="display: none;">🔁 다시 시작</button>
+  </div>
+
+  <script>
+    const game = document.getElementById("game");
+    const scoreEl = document.getElementById("score");
+    const levelEl = document.getElementById("level");
+    const timerEl = document.getElementById("timer");
+    const cursor = document.getElementById("cursor");
+    const restartBtn = document.getElementById("restartBtn");
+    const resetBtn = document.getElementById("resetBtn");
+    const rankingList = document.getElementById("rankingList");
+
+    const overlay = document.getElementById("overlay");
+    const nameInput = document.getElementById("nameInput");
+    const difficultyButtons = document.querySelectorAll(".difficulty-btn");
+
+    const backgrounds = [
+      "https://images.unsplash.com/photo-1532274402917-5aadf881bdf8?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1582582494700-7c081dc1a8b0?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1516302350523-d4fb5eb1dbe4?auto=format&fit=crop&w=800&q=80"
+    ];
+
+    let playerName = "";
+    let score = 0;
+    let level = 1;
+    let timeLeft = 60;
+    let gameOver = false;
+    let bullets = [];
+    let targets = [];
+    let cursorY = 250;
+    let targetSpeed = 2;
+
+    const difficultySettings = {
+      easy: { speed: 2, time: 60 },
+      normal: { speed: 3, time: 45 },
+      hard: { speed: 4, time: 30 }
+    };
+
+    difficultyButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        playerName = nameInput.value.trim() || "플레이어";
+        const mode = btn.dataset.mode;
+        targetSpeed = difficultySettings[mode].speed;
+        timeLeft = difficultySettings[mode].time;
+
+        overlay.style.display = "none";
+        updateBackground();
+        updateHUD();
+        displayScoreboard();
+
+        for (let i = 0; i < 3; i++) spawnTarget();
+        gameLoop();
+      });
+    });
+
+    function updateHUD() {
+      scoreEl.textContent = score;
+      levelEl.textContent = level;
+      timerEl.textContent = timeLeft;
+    }
+
+    function updateBackground() {
+      const index = (level - 1) % backgrounds.length;
+      game.style.backgroundImage = `url('${backgrounds[index]}')`;
+    }
+
+    function spawnTarget() {
+      const target = document.createElement("div");
+      target.className = "target";
+      const x = Math.random() * (game.clientWidth - 40);
+      const y = Math.random() * (game.clientHeight - 40);
+      target.style.left = `${x}px`;
+      target.style.top = `${y}px`;
+      game.appendChild(target);
+      targets.push({ el: target, x, y, dx: targetSpeed + Math.random() });
+    }
+
+    function shoot() {
+      if (gameOver) return;
+      const bullet = document.createElement("div");
+      bullet.className = "bullet";
+      bullet.style.left = "0px";
+      bullet.style.top = `${cursorY}px`;
+      game.appendChild(bullet);
+      bullets.push({ el: bullet, x: 0, y: cursorY });
+    }
+
+    function isColliding(a, b) {
+      return a.x < b.x + 40 && a.x + 10 > b.x && a.y < b.y + 40 && a.y + 4 > b.y;
+    }
+
+    function increaseLevel() {
+      if ([5, 10, 20].includes(score)) {
+        level++;
+        targetSpeed++;
+        updateBackground();
+        for (let i = 0; i < 2; i++) spawnTarget();
+      }
+    }
+
+    function saveScore() {
+      const records = JSON.parse(localStorage.getItem("scores") || "[]");
+      records.push({ name: playerName, score });
+      records.sort((a, b) => b.score - a.score);
+      localStorage.setItem("scores", JSON.stringify(records.slice(0, 5)));
+    }
+
+    function displayScoreboard() {
+      const records = JSON.parse(localStorage.getItem("scores") || "[]");
+      rankingList.innerHTML = "";
+      records.forEach(r => {
+        const li = document.createElement("li");
+        li.textContent = `${r.name} - ${r.score}점`;
+        rankingList.appendChild(li);
+      });
+    }
+
+    function endGame() {
+      gameOver = true;
+      saveScore();
+      displayScoreboard();
+      const over = document.createElement("div");
+      over.id = "gameover";
+      over.textContent = "🛑 게임 오버!";
+      game.appendChild(over);
+      restartBtn.style.display = "inline-block";
+    }
+
+    function gameLoop() {
+      if (gameOver) return;
+
+      targets.forEach(t => {
+        t.x += t.dx;
+        if (t.x < 0 || t.x > game.clientWidth - 40) t.dx *= -1;
+        t.el.style.left = `${t.x}px`;
+      });
+
+      bullets = bullets.filter(b => {
+        b.x += 10;
+        b.el.style.left = `${b.x}px`;
+        if (b.x > game.clientWidth) {
+          game.removeChild(b.el);
+          return false;
+        }
+        for (let i = 0; i < targets.length; i++) {
+          if (isColliding(b, targets[i])) {
+            score++;
+            updateHUD();
+            increaseLevel();
+            game.removeChild(b.el);
+            game.removeChild(targets[i].el);
+            targets.splice(i, 1);
+            spawnTarget();
+            return false;
+          }
+        }
+        return true;
+      });
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    game.addEventListener("mousemove", e => {
+      const rect = game.getBoundingClientRect();
+      cursorY = e.clientY - rect.top;
+      cursor.style.top = `${cursorY}px`;
+    });
+
+    game.addEventListener("click", shoot);
+
+    setInterval(() => {
+      if (gameOver) return;
+      timeLeft--;
+      updateHUD();
+      if (timeLeft <= 0) endGame();
+    }, 1000);
+
+    restartBtn.addEventListener("click", () => {
+      location.reload();
+    });
+
+    resetBtn.addEventListener("click", () => {
+      if (confirm("모든 기록을 초기화하시겠습니까?")) {
+        localStorage.removeItem("scores");
+        displayScoreboard();
+      }
+    });
+  </script>
+</body>
+</html>
