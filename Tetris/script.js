@@ -1,7 +1,12 @@
+// 테트리스 게임 전체 JavaScript 코드 (난이도 선택 기능 제거)
+
 const canvas = document.getElementById('tetris');
 const context = canvas.getContext('2d');
-
 context.scale(20, 20);
+
+const previewCanvas = document.getElementById('preview');
+const previewContext = previewCanvas.getContext('2d');
+previewContext.scale(20, 20);
 
 const rows = 20;
 const cols = 12;
@@ -15,6 +20,7 @@ function createMatrix(w, h) {
 }
 
 const arena = createMatrix(cols, rows);
+const previewArena = createMatrix(4, 4);
 
 function createPiece(type) {
     switch(type) {
@@ -30,19 +36,19 @@ function createPiece(type) {
 
 const colors = [null, 'purple', 'yellow', 'orange', 'blue', 'cyan', 'green', 'red'];
 
-function drawMatrix(matrix, offset, isGhost = false) {
+function drawMatrix(matrix, offset, isGhost = false, ctx = context) {
     matrix.forEach((row, y) => {
         row.forEach((value, x) => {
             if (value !== 0) {
-                context.fillStyle = isGhost ? 'white' : colors[value];
-                context.globalAlpha = isGhost ? 0.3 : 1.0;
-                context.fillRect(x + offset.x, y + offset.y, 1, 1);
+                ctx.fillStyle = isGhost ? 'white' : colors[value];
+                ctx.globalAlpha = isGhost ? 0.3 : 1.0;
+                ctx.fillRect(x + offset.x, y + offset.y, 1, 1);
                 if (!isGhost) {
-                    context.strokeStyle = 'black';
-                    context.lineWidth = 0.1;
-                    context.strokeRect(x + offset.x, y + offset.y, 1, 1);
+                    ctx.strokeStyle = 'black';
+                    ctx.lineWidth = 0.1;
+                    ctx.strokeRect(x + offset.x, y + offset.y, 1, 1);
                 }
-                context.globalAlpha = 1.0;
+                ctx.globalAlpha = 1.0;
             }
         });
     });
@@ -65,16 +71,23 @@ function draw() {
     context.fillRect(0, 0, canvas.width, canvas.height);
 
     drawMatrix(arena, {x: 0, y: 0});
-    drawMatrix(getGhostPosition().matrix, getGhostPosition().pos, true); // 고스트 블록
-    drawMatrix(player.matrix, player.pos); // 실제 블록
+    drawMatrix(getGhostPosition().matrix, getGhostPosition().pos, true);
+    drawMatrix(player.matrix, player.pos);
+
+    drawPreview();
+}
+
+function drawPreview() {
+    previewContext.fillStyle = '#000';
+    previewContext.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+    drawMatrix(nextPiece, {x: 0, y: 0}, false, previewContext);
 }
 
 function collide(arena, player) {
     const [m, o] = [player.matrix, player.pos];
     for (let y = 0; y < m.length; y++) {
         for (let x = 0; x < m[y].length; x++) {
-            if (m[y][x] !== 0 &&
-                (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
+            if (m[y][x] !== 0 && (arena[y + o.y] && arena[y + o.y][x + o.x]) !== 0) {
                 return true;
             }
         }
@@ -107,8 +120,8 @@ function rotate(matrix, clockwise = true) {
 }
 
 function playerReset() {
-    const pieces = 'TJLOSZI';
-    player.matrix = createPiece(pieces[Math.floor(Math.random() * pieces.length)]);
+    player.matrix = nextPiece;
+    nextPiece = createPiece(pieces[Math.floor(Math.random() * pieces.length)]);
     player.pos.y = 0;
     player.pos.x = Math.floor(cols / 2) - Math.floor(player.matrix[0].length / 2);
     if (collide(arena, player)) {
@@ -152,12 +165,12 @@ let dropInterval = 1000;
 let lastTime = 0;
 
 function updateDropSpeed() {
-    if (player.score >= 2500) dropInterval = 200;
-    else if (player.score >= 1500) dropInterval = 300;
-    else if (player.score >= 1000) dropInterval = 400;
-    else if (player.score >= 500) dropInterval = 600;
-    else if (player.score >= 200) dropInterval = 800;
-    else dropInterval = 1000;
+    if (player.score >= 1300) dropInterval = 100;
+    else if (player.score >= 1100) dropInterval = 200;
+    else if (player.score >= 800) dropInterval = 300;
+    else if (player.score >= 500) dropInterval = 400;
+    else if (player.score >= 200) dropInterval = 500;
+    else dropInterval = 700;
 }
 
 function playerDrop() {
@@ -179,6 +192,8 @@ function hardDrop() {
     playerDrop();
 }
 
+let paused = false;
+
 document.addEventListener('keydown', e => {
     if (e.key === 'ArrowLeft') {
         player.pos.x--;
@@ -193,19 +208,23 @@ document.addEventListener('keydown', e => {
         if (collide(arena, player)) rotate(player.matrix, false);
     } else if (e.key === ' ') {
         hardDrop();
+    } else if (e.key === 'p') {
+        paused = !paused;
     }
 });
 
 function update(time = 0) {
-    const deltaTime = time - lastTime;
-    lastTime = time;
+    if (!paused) {
+        const deltaTime = time - lastTime;
+        lastTime = time;
 
-    dropCounter += deltaTime;
-    if (dropCounter > dropInterval) {
-        playerDrop();
+        dropCounter += deltaTime;
+        if (dropCounter > dropInterval) {
+            playerDrop();
+        }
+
+        draw();
     }
-
-    draw();
     requestAnimationFrame(update);
 }
 
@@ -214,6 +233,9 @@ const player = {
     matrix: null,
     score: 0,
 };
+
+const pieces = 'TJLOSZI';
+let nextPiece = createPiece(pieces[Math.floor(Math.random() * pieces.length)]);
 
 playerReset();
 updateScore();
