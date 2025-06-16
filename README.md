@@ -1,3 +1,5 @@
 # Game_project
-Game_project은 HTML, CSS, JavaScript을 활용해서 만든 Project입니다. 
-기본 틀은 HTML, 색상이나 디자인은 CSS으로, 움직일 수 있는 엔진은 JavaScript으로 하였습니다. 
+### Game_project는 HTML, CSS, JavaScript를 활용해 제작한 웹 기반 게임 프로젝트입니다.
+### 기본적인 구조는 HTML로 구성하고, CSS를 이용해 색상 및 디자인 요소를 구현했으며,
+### 게임의 움직임과 상호작용 기능은 JavaScript를 통해 개발했습니다.
+### 이 프로젝트는 웹 기술의 기초를 바탕으로 동적인 게임 환경을 만드는 데 중점을 두었습니다.
