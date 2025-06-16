@@ -1,5 +1,3 @@
-// 테트리스 게임 전체 JavaScript 코드 (난이도 선택 기능 제거)
-
 const canvas = document.getElementById('tetris');
 const context = canvas.getContext('2d');
 context.scale(20, 20);
@@ -165,12 +163,12 @@ let dropInterval = 1000;
 let lastTime = 0;
 
 function updateDropSpeed() {
-    if (player.score >= 1300) dropInterval = 100;
-    else if (player.score >= 1100) dropInterval = 200;
-    else if (player.score >= 800) dropInterval = 300;
-    else if (player.score >= 500) dropInterval = 400;
-    else if (player.score >= 200) dropInterval = 500;
-    else dropInterval = 700;
+    if (player.score >= 2500) dropInterval = 200;
+    else if (player.score >= 1500) dropInterval = 300;
+    else if (player.score >= 1000) dropInterval = 400;
+    else if (player.score >= 500) dropInterval = 600;
+    else if (player.score >= 200) dropInterval = 800;
+    else dropInterval = 1000;
 }
 
 function playerDrop() {
