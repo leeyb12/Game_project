@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>지뢰 찾기</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: sans-serif;
+        text-align: center;
+        margin: 0;
+        padding: 20px;
+        background: linear-gradient(to bottom, #e0f7fa, #80deea);
+        transition: background 0.4s ease;
+      }
+
+      body.dark {
+        background: linear-gradient(to bottom, #263238, #37474f);
+        color: white;
+      }
+
+      h1 {
+        margin-top: 10px;
+      }
+
+      #controls {
+        margin-bottom: 10px;
+      }
+
+      select, button {
+        padding: 6px 12px;
+        font-size: 1rem;
+        margin: 5px;
+      }
+
+      #info {
+        margin: 10px;
+        font-size: 1rem;
+      }
+
+      #board {
+        display: grid;
+        justify-content: center;
+        gap: 2px;
+        margin-top: 15px;
+      }
+
+      .cell {
+        width: 30px;
+        height: 30px;
+        background: #bdbdbd;
+        text-align: center;
+        line-height: 30px;
+        font-weight: bold;
+        cursor: pointer;
+        user-select: none;
+        transition: transform 0.1s ease, background 0.3s;
+      }
+
+      .cell.revealed {
+        background: #eeeeee;
+        transform: scale(1.05);
+      }
+
+      .cell.flagged {
+        background: orange;
+      }
+
+      .cell.mine {
+        background: red;
+      }
+
+      .dark .cell {
+        background: #455a64;
+        color: white;
+      }
+
+      .dark .cell.revealed {
+        background: #78909c;
+      }
+
+      .dark .cell.flagged {
+        background: #ff9800;
+      }
+
+      .dark .cell.mine {
+        background: #e53935;
+      }
+    </style>
+  <body>
+    <h1>💣지뢰 찾기</h1>
+    <a href="index.html">뒤로 가기</a>
+    <div id="controls">
+      <label for="difficulty">난이도:</label>
+      <select id="difficulty">
+        <option value="easy">쉬움 (9X9, 10)</option>
+        <option value="medium" selected>보통 (16X16, 40)</option>
+        <option value="hard">어려움 (20X20, 99)</option>
+      </select>
+      <button onClick="startGame()">게임 시작</button>
+      <button onClick="toggleTheme()">🌙 테마 변경</button>
+    </div>
+    <div id="info">
+      ⏱ 시간: <span id="timer">0</span>초 |
+      🚩 남은 깃발: <span id="flags">0</span> |
+      🏆 최고 점수: <span id="highScore()">0</span>
+    </div>
+    <div id="board"></div>
+
+    <script>
+      let boardSize = 16, mineCount = 40;
+      let board = document.getElementById("board");
+      let cells = [], mines = new Set();
+      let flagsLeft, timer = 0, interval, revealed = 0;
+      let totalCells, darkMode = false;
+      const timerE1 = document.getElementById("timer");
+      const flagsE1 = document.getElementById("flags");
+      const highScoreE1 = document.getElementById("highScore");
+      let highScore = localStorage.getItem("mineHighScore") || 0;
+      highScoreE1.textContent = highScore;
+
+      function startGame() {
+        const level = document.getElementById("difficulty").value;
+        if (level === "easy") { boardSize = 9; mineCount = 10; }
+        else if (level === "hard") { boardSize = 20; mineCount = 99; }
+        else { boardSize = 16; mineCount = 40; }
+
+        clearInterval(interval);
+        timer = 0;
+        revealed = 0;
+        totalCells = boardSize * boardSize;
+        flagsLeft = mineCount;
+        cells = [];
+        mines.clear();
+
+        timerE1.textContent = timer;
+        flagsE1.textContent = flagsLeft;
+        board.innerHTML = "";
+        board.style.gridTemplateColumns = `repeat(${boardSize}, 30px)`;
+
+        while (mines.size < mineCount) {
+          mines.add(Math.floor(Math.random() * totalCells));
+        }
+
+        for (let i = 0; i < totalCells; i++) {
+          const cell = document.createElement("div");
+          cell.classList.add("cell");
+          if (darkMode) cell.classList.add("dark");
+          cell.dataset.index = i;
+
+          cell.addEventListener("click", handleClick);
+          cell.addEventListener("contextmenu", handleRightClick);
+
+          // 모바일 길게 누르면 깃발
+          let pressTimer;
+          cell.addEventListener("touchstart", () => {
+            pressTimer = setTimeout(() => handleRightClick({ preventDefault(){}, target: cell }), 500);
+          });
+          cell.addEventListener("touchend", () => clearTimeout(pressTimer));
+
+          board.appendChild(cell);
+          cells.push(cell);
+        }
+
+        interval = setInterval(() => {
+          timer++;
+          timerE1.textContent = timer;
+        }, 1000);
+      }
+
+      function handleClick(e) {
+        const idx = parseInt(e.target.dataset.index);
+        const cell = cells[idx];
+        if (cell.classList.contains("flagged") || 
+            cell.classList.contains("revealed")) return;
+        
+        if (mines.has(idx)) {
+          revealAll(false);
+          return;
+        }
+
+        reveal(idx);
+        checkWin();
+      }
+
+      function handleRightClick(e) {
+        e.preventDefault();
+        const idx = parseInt(e.target.dataset.index);
+        const cell = cells[idx];
+        if (cell.classList.contains("revealed")) return;
+
+        if (cell.classList.contains("flagged")) {
+          cell.classList.remove("flagged");
+          cell.textContent = "";
+          flagsLeft++;
+        } else if (flagsLeft > 0) {
+          cell.classList.add("flagged");
+          cell.textContent = "🚩";
+          flagsLeft--;
+        }
+        flagsE1.textContent = flagsLeft;
+      }
+
+      function getNeighbors(index) {
+        const neighbors = [];
+        const x = index % boardSize, y = Math.floor(index / boardSize);
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx, ny = y + dy;
+            if (nx >= 0 && nx < boardSize && ny >= 0 && ny < boardSize) {
+              neighbors.push(ny * boardSize + nx);
+            }
+          }
+        }
+        return neighbors;
+      }
+
+      function reveal(index) {
+        const cell = cells[index];
+        if (cell.classList.contains("revealed")) return;
+        cell.classList.add("revealed");
+        revealed++;
+
+        const count = getNeighbors(index).filter(i => mines.has(i)).length;
+        if (count > 0) {
+          cell.textContent = count;
+        } else {
+          getNeighbors(index).forEach(reveal);
+        }
+      }
+
+      function revealAll(won) {
+        clearInterval(interval);
+        mines.forEach(i => {
+          const cell = cells[i];
+          cell.classList.add("mine");
+          cell.textContent = "💣";
+        });
+        cells.forEach(c => c.classList.add("revealed"));
+        setTimeout(() => {
+          alert(won ? "🎉 승리!" : "☠ 게임 오버!");
+        }, 100);
+      }
+
+      function checkWin() {
+        if (revealed === totalCells - mineCount) {
+          clearInterval(interval);
+          const score = (totalCells - revealed) * 5 + Math.max(0, 999 - timer);
+          revealAll(true);
+          if (score > highScore) {
+            localStorage.setItem("mineHighScore", score);
+            highScoreE1.textContent = score;
+          }
+        }
+      }
+
+      function toggleTheme() {
+        document.body.classList.toggle("dark");
+        darkMode = !darkMode;
+        cells.forEach(cell => {
+          darkMode ? cell.classList.add("dark") : 
+          cell.classList.remove("dark")
+        })
+      }
+    </script>
+  </body>
+</html>

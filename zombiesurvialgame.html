@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>좀비 서바이벌 게임</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial;
+      background: #013b13;         /* (기존 #111 → 짙은 초록) */
+      color: #fff;
+    }
+
+    canvas#gameCanvas {
+      background-color: #0a2f0a;   /* (기존 #222 → 어두운 초록) */
+      display: block;
+      margin: 0 auto;
+      border: 2px solid white;
+      z-index: 1;
+    }
+
+    #rain {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      /* 비 색상은 그대로 두어도 잘 보입니다 */
+      background-image: repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.18),
+        rgba(255, 255, 255, 0.18) 1px,
+        transparent 1px,
+        transparent 20px
+      );
+      animation: rain 0.3s linear infinite;
+    }
+
+    @keyframes rain {
+      from { background-position: 0 0; }
+      to   { background-position: 0 20px; }
+    }
+
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 2;
+      font-size: 16px;
+      user-select: none;
+    }
+
+    #gameOverScreen {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: #ff5959;
+      font-size: 32px;
+      display: none;
+      z-index: 4;
+    }
+
+    #restartBtn {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    #minimap {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 150px;
+      height: 150px;
+      background: rgba(0, 64, 0, 0.7);     /* 초록 투명 배경 */
+      border: 2px solid white;
+      z-index: 2;
+    }
+
+    #shop {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 96, 0, 0.9);     /* 초록 투명 배경 */
+      padding: 10px;
+      border: 2px solid white;
+      display: none;
+      color: white;
+      font-size: 16px;
+      z-index: 3;
+    }
+    #shop button {
+      margin: 5px;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+
+    /* ===== ‘뒤로 가기’ 버튼 – 화면 위‑가운데 고정 ===== */
+    #backBtn {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      text-decoration: none;
+      font-size: 16px;
+      z-index: 5;        /* UI 위로 */
+      padding: 4px 10px;
+      border: 1px solid white;
+      border-radius: 4px;
+      background: rgba(0, 80, 0, 0.6);
+    }
+    #backBtn:hover { background: rgba(0, 80, 0, 0.85); }
+  </style>
+  </style>
+</head>
+<body>
+  <a id="backBtn" href="index.html">뒤로 가기</a>
+  <div id="rain"></div>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="ui">
+    ❤ 생명: <span id="life">3</span><br>
+    ☠ 점수: <span id="score">0</span><br>
+    🏆 최고: <span id="highscore">0</span><br>
+    ⚔ 무기: <span id="weapon">Lv1 총</span><br> 
+    🔆 스킬: <span id="skill">사용 가능</span><br>
+    ✨ 경험치: <span id="exp">0</span>/<span id="expToLevel">20</span><br>
+    레벨: <span id="level">1</span><br>
+    <small>스킬 폭발(E), 상점 열기(M)</small>
+  </div>
+  <canvas id="minimap" width="150" height="150"></canvas>
+  <div id="shop">
+    <h3>무기 상점</h3>
+    <div>보유 점수: <span id="shopScore">0</span></div>
+    <button data-cost="5" data-level="2">Lv2 총 (5 점수)</button>
+    <button data-cost="10" data-level="3">Lv3 총 (10 점수)</button>
+    <button data-cost="20" data-level="4">Lv4 총 (20 점수)</button>
+    <button id="closeShop">닫기</button>
+  </div>
+  <div id="gameOverScreen">
+    <div>💀게임 오버💀</div>
+    <div id="finalScore"></div>
+    <button id="restartBtn">다시 시작</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const minimap = document.getElementById("minimap");
+    const miniCtx = minimap.getContext("2d");
+
+    const scoreEl = document.getElementById("score");
+    const highScoreEl = document.getElementById("highscore");
+    const lifeEl = document.getElementById("life");
+    const weaponEl = document.getElementById("weapon");
+    const skillEl = document.getElementById("skill");
+    const expEl = document.getElementById("exp");
+    const expToLevelEl = document.getElementById("expToLevel");
+    const levelEl = document.getElementById("level");
+
+    const gameOverScreen = document.getElementById("gameOverScreen");
+    const restartBtn = document.getElementById("restartBtn");
+    const finalScore = document.getElementById("finalScore");
+
+    const shop = document.getElementById("shop");
+    const shopScoreEl = document.getElementById("shopScore");
+    const closeShopBtn = document.getElementById("closeShop");
+    const shopButtons = shop.querySelectorAll("button[data-cost]");
+
+    const player = { x: 400, y: 300, size: 20, speed: 5 };
+    const bullets = [];
+    const zombies = [];
+    const allies = [{ x: 200, y: 200, cooldown: 0 }];
+    const keys = {};
+
+    let score = 0;
+    let highScore = localStorage.getItem("zombieHighScore") || 0;
+    let life = 3;
+    let weaponLevel = 1;
+    let skillCooldown = 0;
+    let exp = 0;
+    let expToLevel = 20;
+    let level = 1;
+    let gameRunning = true;
+    let shopOpen = false;
+
+    highScoreEl.textContent = highScore;
+
+    function drawPlayer() {
+      ctx.fillStyle = "cyan";
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawAlly() {
+      allies.forEach(a => {
+        ctx.fillStyle = "orange";
+        ctx.beginPath();
+        ctx.arc(a.x, a.y, 15, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function moveAlly() {
+      allies.forEach(a => {
+        const target = zombies[0];
+        if (target) {
+          const dx = target.x - a.x;
+          const dy = target.y - a.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 0) {
+            a.x += (dx / dist) * 1.5;
+            a.y += (dy / dist) * 1.5;
+          }
+
+          if (a.cooldown <= 0 && dist < 150) {
+            bullets.push({
+              x: a.x,
+              y: a.y,
+              dx: dx / dist,
+              dy: dy / dist
+            });
+            a.cooldown = 50;
+          } else {
+            a.cooldown--;
+          }
+        }
+      });
+    }
+
+    function drawBullets() {
+      ctx.fillStyle = "yellow";
+      bullets.forEach(b => {
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function drawZombies() {
+      zombies.forEach(z => {
+        ctx.fillStyle = z.type === "boss" ? "darkred" : "green";
+        ctx.beginPath();
+        ctx.arc(z.x, z.y, z.size, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function movePlayer() {
+      if (keys["ArrowUp"] || keys["w"]) player.y -= player.speed;
+      if (keys["ArrowDown"] || keys["s"]) player.y += player.speed;
+      if (keys["ArrowLeft"] || keys["a"]) player.x -= player.speed;
+      if (keys["ArrowRight"] || keys["d"]) player.x += player.speed;
+
+      player.x = Math.max(player.size, Math.min(canvas.width - player.size, player.x));
+      player.y = Math.max(player.size, Math.min(canvas.height - player.size, player.y));
+    }
+
+    function shootBullet(angle) {
+      let count = weaponLevel;
+      for (let i = 0; i < count; i++) {
+        const spread = (i - (count - 1) / 2) * 0.1;
+        bullets.push({
+          x: player.x,
+          y: player.y,
+          dx: Math.cos(angle + spread),
+          dy: Math.sin(angle + spread)
+        });
+      }
+    }
+
+    function moveZombies() {
+      zombies.forEach(z => {
+        const dx = player.x - z.x;
+        const dy = player.y - z.y;
+        const dist = Math.hypot(dx, dy);
+        z.x += (dx / dist) * z.speed;
+        z.y += (dy / dist) * z.speed;
+      });
+    }
+
+    function updateBullets() {
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x += b.dx * 10;
+        b.y += b.dy * 10;
+        if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+          bullets.splice(i, 1);
+        }
+      }
+    }
+
+    function checkCollisions() {
+      for (let zi = zombies.length - 1; zi >= 0; zi--) {
+        const z = zombies[zi];
+        for (let bi = bullets.length - 1; bi >= 0; bi--) {
+          const b = bullets[bi];
+          const dist = Math.hypot(z.x - b.x, z.y - b.y);
+          if (dist < z.size) {
+            z.hp--;
+            bullets.splice(bi, 1);
+            if (z.hp <= 0) {
+              zombies.splice(zi, 1);
+              score++;
+              exp += 5;
+              updateUI();
+              return;
+            }
+          }
+        }
+
+        const dist = Math.hypot(player.x - z.x, player.y - z.y);
+        if (dist < player.size + z.size) {
+          zombies.splice(zi, 1);
+          life--;
+          lifeEl.textContent = life;
+          if (life <= 0) {
+            gameRunning = false;
+            gameOverScreen.style.display = "block";
+            finalScore.textContent = `최종 점수: ${score}`;
+          }
+        }
+      }
+    }
+
+    function updateUI() {
+      scoreEl.textContent = score;
+      expEl.textContent = exp;
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem("zombieHighScore", score);
+        highScoreEl.textContent = score;
+      }
+      updateWeapon();
+      checkLevelUp();
+    }
+
+    function updateWeapon() {
+      weaponEl.textContent = `Lv${weaponLevel} 총`;
+    }
+
+    function checkLevelUp() {
+      if (exp >= expToLevel) {
+        exp -= expToLevel;
+        level++;
+        expToLevel = Math.floor(expToLevel * 1.5);
+        expToLevelEl.textContent = expToLevel;
+        levelEl.textContent = level;
+        player.speed += 0.5;
+      }
+    }
+
+    function useSkill() {
+      if (skillCooldown <= 0) {
+        zombies.splice(0, zombies.length);
+        score += 5;
+        exp += 5;
+        skillCooldown = 300;
+        skillEl.textContent = "쿨다운 중";
+        updateUI();
+      }
+    }
+
+    function updateSkillCooldown() {
+      if (skillCooldown > 0) {
+        skillCooldown--;
+        if (skillCooldown === 0) skillEl.textContent = "사용 가능";
+      }
+    }
+
+    function spawnZombie() {
+      const side = Math.floor(Math.random() * 4);
+      let x = side % 2 === 0 ? (side === 0 ? 0 : canvas.width) : Math.random() * canvas.width;
+      let y = side % 2 === 1 ? (side === 1 ? 0 : canvas.height) : Math.random() * canvas.height;
+
+      let type = "normal", size = 20, speed = 1.5, hp = 1;
+      if (score !== 0 && score % 20 === 0) {
+        type = "boss"; size = 40; speed = 1; hp = 10;
+      }
+
+      zombies.push({ x, y, size, speed, type, hp });
+    }
+
+    function drawMinimap() {
+      miniCtx.clearRect(0, 0, minimap.width, minimap.height);
+      miniCtx.fillStyle = "cyan";
+      miniCtx.beginPath();
+      miniCtx.arc((player.x / canvas.width) * minimap.width, (player.y / canvas.height) * minimap.height, 5, 0, Math.PI * 2);
+      miniCtx.fill();
+
+      zombies.forEach(z => {
+        miniCtx.fillStyle = z.type === "boss" ? "red" : "green";
+        miniCtx.beginPath();
+        miniCtx.arc((z.x / canvas.width) * minimap.width, (z.y / canvas.height) * minimap.height, 3, 0, Math.PI * 2);
+        miniCtx.fill();
+      });
+
+      allies.forEach(a => {
+        miniCtx.fillStyle = "orange";
+        miniCtx.beginPath();
+        miniCtx.arc((a.x / canvas.width) * minimap.width, (a.y / canvas.height) * minimap.height, 4, 0, Math.PI * 2);
+        miniCtx.fill();
+      });
+    }
+
+    shopButtons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        const cost = parseInt(btn.dataset.cost);
+        const levelReq = parseInt(btn.dataset.level);
+        if (score >= cost && levelReq > weaponLevel) {
+          score -= cost;
+          weaponLevel = levelReq;
+          scoreEl.textContent = score;
+          updateWeapon();
+          closeShop();
+        } else {
+          alert("점수가 부족하거나 이미 해당 무기레벨 이상입니다.");
+        }
+      });
+    });
+
+    function openShop() {
+      shopOpen = true;
+      shop.style.display = "block";
+      shopScoreEl.textContent = score;
+    }
+
+    function closeShop() {
+      shopOpen = false;
+      shop.style.display = "none";
+    }
+
+    closeShopBtn.onclick = closeShop;
+    restartBtn.onclick = () => location.reload();
+
+    document.addEventListener("keydown", e => {
+      keys[e.key] = true;
+      if (e.key === "e") useSkill();
+      if (e.key === "m") shopOpen ? closeShop() : openShop();
+    });
+
+    document.addEventListener("keyup", e => keys[e.key] = false);
+
+    canvas.addEventListener("click", e => {
+      if (!gameRunning || shopOpen) return;
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const angle = Math.atan2(my - player.y, mx - player.x);
+      shootBullet(angle);
+    });
+
+    setInterval(() => {
+      if (gameRunning && !shopOpen) spawnZombie();
+    }, 1000);
+
+    function gameLoop() {
+      if (!gameRunning) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      movePlayer();
+      moveZombies();
+      moveAlly();
+      updateBullets();
+      checkCollisions();
+      updateSkillCooldown();
+
+      drawPlayer();
+      drawAlly();
+      drawBullets();
+      drawZombies();
+      drawMinimap();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
