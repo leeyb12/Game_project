@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Solitaire 완성형 + 힌트 + 자동완성 + 모바일 + 애니메이션</title>
+<style>
+  :root {
+    --bg: #006400;
+    --card-bg: white;
+    --card-text: black;
+    --border: white;
+    --highlight: gold;
+  }
+  body.dark {
+    --bg: #1e1e1e;
+    --card-bg: #333;
+    --card-text: white;
+    --border: #888;
+    --highlight: orange;
+  }
+  body {
+    margin: 0;
+    font-family: sans-serif;
+    background: var(--bg);
+    color: white;
+    transition: 0.3s;
+    user-select: none;
+  }
+  h1 {
+    text-align: center;
+    padding: 10px;
+  }
+  #back-link {
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  #controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 10px;
+    color: white;
+    align-items: center;
+  }
+  button, select {
+    padding: 6px 12px;
+    font-size: 14px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    background: var(--card-bg);
+    color: var(--card-text);
+    transition: background-color 0.2s ease;
+  }
+  button:hover, select:hover {
+    background: var(--highlight);
+    color: black;
+  }
+  #game {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 600px;
+    margin: auto;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+    margin: 6px 0;
+    flex-wrap: nowrap;
+    justify-content: center;
+  }
+  .pile {
+    width: 80px;
+    height: 120px;
+    border: 2px dashed var(--border);
+    position: relative;
+    background: transparent;
+    border-radius: 5px;
+    flex-shrink: 0;
+  }
+  .foundation {
+    border: 2px solid var(--highlight);
+  }
+  .card {
+    width: 80px;
+    height: 120px;
+    background: var(--card-bg);
+    color: var(--card-text);
+    font-family: var(--card-font, Arial);
+    border-radius: 5px;
+    border: 1px solid black;
+    position: absolute;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: bold;
+    cursor: grab;
+    user-select: none;
+    box-sizing: border-box;
+    z-index: 0;
+    transition: top 0.3s ease, left 0.3s ease, transform 0.4s ease;
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
+  }
+  .card.red {
+    color: red;
+  }
+  .card.back {
+    background: blue;
+    color: transparent;
+    cursor: pointer;
+    border: 1px solid #0000aa;
+    box-shadow: inset 0 0 15px #000099;
+    transform: rotateY(0deg);
+  }
+  .card.flipping {
+    animation: flipcard 0.6s forwards;
+  }
+  @keyframes flipcard {
+    0%   { transform: rotateY(0deg); }
+    50%  { transform: rotateY(90deg); }
+    100% { transform: rotateY(0deg); }
+  }
+  .hint {
+    box-shadow: 0 0 10px 3px var(--highlight);
+    z-index: 9999 !important;
+  }
+  #ai-msg, #message, #ranking {
+    text-align: center;
+    margin: 6px;
+    font-weight: bold;
+  }
+  /* 모바일 대응 */
+  @media (max-width: 700px) {
+    #game {
+      max-width: 100vw;
+      padding: 0 5px;
+    }
+    .pile {
+      width: 60px;
+      height: 90px;
+    }
+    .card {
+      width: 60px;
+      height: 90px;
+      font-size: 16px;
+    }
+    .row {
+      gap: 6px;
+    }
+  }
+</style>
+</head>
+<body>
+<h1>Solitaire</h1>
+<div id="back-link">
+  <a href="index.html" style="color: white;">뒤로 가기</a>
+</div>
+<div id="controls">
+  <button onClick="startGame()">🔁 새 게임</button>
+  <button onClick="undoMove()">↩ 되돌리기</button>
+  <button onClick="toggleTheme()">🌙 테마</button>
+  <button id="hint-btn" onClick="showHint()">💡 힌트</button>
+  <button onClick="autoComplete()">⚡ 자동 완성</button>
+  <select onChange="changeCardStyle(this.value)">
+    <option disabled selected>🎨 카드 스타일</option>
+    <option value="Arial">Arial</option>
+    <option value="Georgia">Georgia</option>
+    <option value="Comic Sans MS">Comic Sans</option>
+    <option value="Courier New">Courier</option>
+  </select>
+  <button onClick="saveGame()">💾 저장</button>
+  <button onClick="loadGame()">📁 불러오기</button>
+  <span style="margin-left: 20px;">점수: <span id="score">0</span></span>
+  <span style="margin-left: 20px;">이동 수: <span id="moveCount">0</span></span>
+</div>
+<div id="game">
+  <div class="row" id="top">
+    <div class="pile" id="stock" onClick="drawCard()"></div>
+    <div class="pile" id="waste"></div>
+    <div class="pile foundation" id="f0"></div>
+    <div class="pile foundation" id="f1"></div>
+    <div class="pile foundation" id="f2"></div>
+    <div class="pile foundation" id="f3"></div>
+  </div>
+  <div class="row" id="tableau"></div>
+</div>
+<div id="ai-msg"></div>
+
+<script>
+const suits = ['♠', '♥', '♦', '♣'];
+const values = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+
+let piles = {
+  stock: [],
+  waste: [],
+  foundation: [[],[],[],[]],
+  tableau: [[],[],[],[],[],[],[]]
+};
+
+let score = 0;
+let moveHistory = [];
+
+function isRed(suit) {
+  return suit === '♥' || suit === '♦';
+}
+
+function createDeck() {
+  let deck = [];
+  for(let suit of suits) {
+    for(let value of values) {
+      deck.push({suit, value, faceUp:false});
+    }
+  }
+  return deck;
+}
+
+function shuffleDeck(deck) {
+  for(let i=deck.length-1; i>0; i--) {
+    let j = Math.floor(Math.random()*(i+1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+}
+
+function createCardElement(card, pileType, pileIndex, cardIndex) {
+  const div = document.createElement('div');
+  div.className = 'card';
+  if (!card.faceUp) {
+    div.classList.add('back');
+    div.style.transform = 'rotateY(0deg)';
+  } else {
+    div.style.transform = 'rotateY(0deg)';
+  }
+  if (card.faceUp && isRed(card.suit)) {
+    div.classList.add('red');
+  }
+  div.textContent = card.faceUp ? card.value + card.suit : '';
+  div.style.top = (pileType === 'tableau' ? cardIndex * 25 : 0) + 'px';
+  div.dataset.suit = card.suit;
+  div.dataset.value = card.value;
+  div.dataset.pileType = pileType;
+  div.dataset.pileIndex = pileIndex;
+  div.dataset.cardIndex = cardIndex;
+  if (card.faceUp) {
+    div.draggable = true;
+    div.addEventListener('dragstart', dragStart);
+    div.addEventListener('dblclick', autoMoveToFoundation);
+  } else {
+    div.addEventListener('click', () => flipCard(pileType, pileIndex, cardIndex));
+  }
+  div.style.zIndex = cardIndex + 1;
+  return div;
+}
+
+function renderGame() {
+  const stockEl = document.getElementById('stock');
+  const wasteEl = document.getElementById('waste');
+  const tableauEl = document.getElementById('tableau');
+  const foundationEls = [0,1,2,3].map(i => document.getElementById('f'+i));
+
+  stockEl.innerHTML = '';
+  wasteEl.innerHTML = '';
+  tableauEl.innerHTML = '';
+  foundationEls.forEach(f => f.innerHTML = '');
+
+  // Stock: 한 장만 보이기 (맨 뒤 카드)
+  if (piles.stock.length > 0) {
+    const topCard = piles.stock[piles.stock.length-1];
+    const cardEl = createCardElement(topCard, 'stock', 0, piles.stock.length-1);
+    stockEl.appendChild(cardEl);
+  }
+
+  // Waste: 모두 보여주기 (한 줄에 쌓기)
+  piles.waste.forEach((card, idx) => {
+    const cardEl = createCardElement(card, 'waste', 0, idx);
+    wasteEl.appendChild(cardEl);
+  });
+
+  // Foundation
+  piles.foundation.forEach((pile, idx) => {
+    pile.forEach((card, idxCard) => {
+      const cardEl = createCardElement(card, 'foundation', idx, idxCard);
+      foundationEls[idx].appendChild(cardEl);
+    });
+  });
+
+  // Tableau
+  for(let i=0; i<7; i++) {
+    const pileDiv = document.createElement('div');
+    pileDiv.className = 'pile';
+    pileDiv.dataset.pileType = 'tableau';
+    pileDiv.dataset.pileIndex = i;
+    pileDiv.addEventListener('dragover', allowDrop);
+    pileDiv.addEventListener('drop', dropCard);
+
+    piles.tableau[i].forEach((card, idxCard) => {
+      const cardEl = createCardElement(card, 'tableau', i, idxCard);
+      pileDiv.appendChild(cardEl);
+    });
+
+    tableauEl.appendChild(pileDiv);
+  }
+
+  updateScore(0); // 점수 갱신
+  updateMoveCount();
+}
+
+function flipCard(pileType, pileIndex, cardIndex) {
+  let pile = piles[pileType];
+  if (pileType === 'foundation' || pileType === 'stock' || pileType === 'waste') return; // 뒤집기 안됨
+  const card = pile[pileIndex][cardIndex];
+  if (!card.faceUp) {
+    // 뒤집기 애니메이션
+    const cardsEls = document.querySelectorAll(`.card[data-pile-type="${pileType}"][data-pile-index="${pileIndex}"][data-card-index="${cardIndex}"]`);
+    cardsEls.forEach(el => {
+      el.classList.add('flipping');
+      el.style.transform = 'rotateY(90deg)';
+      setTimeout(() => {
+        card.faceUp = true;
+        renderGame();
+      }, 300);
+      setTimeout(() => {
+        el.classList.remove('flipping');
+        el.style.transform = 'rotateY(0deg)';
+      }, 600);
+    });
+    updateScore(5);
+  }
+}
+
+// 드래그 시작
+function dragStart(e) {
+  const cardEl = e.target;
+  const pileType = cardEl.dataset.pileType;
+  const pileIndex = parseInt(cardEl.dataset.pileIndex);
+  const cardIndex = parseInt(cardEl.dataset.cardIndex);
+
+  if (pileType !== 'tableau') {
+    // 테이블 밖 카드 한장만 이동 가능
+    e.dataTransfer.setData('text/plain', JSON.stringify({pileType, pileIndex, cardIndex, count:1}));
+  } else {
+    // 테이블에서는 여러장 묶음 이동 가능
+    const count = piles.tableau[pileIndex].length - cardIndex;
+    e.dataTransfer.setData('text/plain', JSON.stringify({pileType, pileIndex, cardIndex, count}));
+  }
+}
+
+// 드롭 허용
+function allowDrop(e) {
+  e.preventDefault();
+}
+
+// 카드 이동 가능 여부 검사
+function canMoveCards(cards, toPileType, toPileIndex) {
+  if (cards.length === 0) return false;
+  const first = cards[0];
+  if (toPileType === 'foundation') {
+    const pile = piles.foundation[toPileIndex];
+    if (pile.length === 0) return first.value === 'A';
+    const top = pile[pile.length-1];
+    return top.suit === first.suit && values.indexOf(first.value) === values.indexOf(top.value) +1;
+  } else if (toPileType === 'tableau') {
+    const pile = piles.tableau[toPileIndex];
+    if (pile.length === 0) return first.value === 'K';
+    const top = pile[pile.length-1];
+    if (!top.faceUp) return false;
+    const isOppositeColor = isRed(top.suit) !== isRed(first.suit);
+    const isOneLower = values.indexOf(first.value) === values.indexOf(top.value) - 1;
+    return isOppositeColor && isOneLower;
+  }
+  return false;
+}
+
+// 카드 드롭 시 처리
+function dropCard(e) {
+  e.preventDefault();
+  const target = e.currentTarget;
+  const toPileType = target.dataset.pileType;
+  const toPileIndex = parseInt(target.dataset.pileIndex);
+
+  const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+  const {pileType: fromPileType, pileIndex: fromPileIndex, cardIndex: fromCardIndex, count} = data;
+
+  let movingCards;
+  if (fromPileType === 'tableau') {
+    movingCards = piles.tableau[fromPileIndex].slice(fromCardIndex, fromCardIndex + count);
+  } else if (fromPileType === 'waste') {
+    movingCards = [piles.waste[piles.waste.length-1]];
+  } else if (fromPileType === 'stock') {
+    movingCards = [piles.stock[piles.stock.length-1]];
+  } else {
+    return; // 이동 불가
+  }
+
+  if (!canMoveCards(movingCards, toPileType, toPileIndex)) return;
+
+  // 이동 처리
+  if (fromPileType === 'tableau') {
+    piles.tableau[fromPileIndex].splice(fromCardIndex, count);
+    // 앞 카드 뒤집기
+    if (piles.tableau[fromPileIndex].length > 0) {
+      let lastCard = piles.tableau[fromPileIndex][piles.tableau[fromPileIndex].length - 1];
+      if (!lastCard.faceUp) {
+        lastCard.faceUp = true;
+        updateScore(5);
+      }
+    }
+  } else if (fromPileType === 'waste') {
+    piles.waste.pop();
+  } else if (fromPileType === 'stock') {
+    piles.stock.pop();
+  }
+
+  if (toPileType === 'foundation') {
+    piles.foundation[toPileIndex].push(...movingCards);
+  } else if (toPileType === 'tableau') {
+    piles.tableau[toPileIndex].push(...movingCards);
+  }
+
+  moveHistory.push({
+    from: {pileType: fromPileType, pileIndex: fromPileIndex, cardIndex: fromCardIndex},
+    to: {pileType: toPileType, pileIndex: toPileIndex},
+    cards: movingCards.map(c => ({...c}))
+  });
+  updateScore(10 * movingCards.length);
+  renderGame();
+  updateMoveCount();
+  checkWin();
+}
+
+// 스톡에서 카드 뽑기 (stock 클릭)
+function drawCard() {
+  if (piles.stock.length > 0) {
+    const card = piles.stock.pop();
+    card.faceUp = true;
+    piles.waste.push(card);
+    moveHistory.push({action:'draw'});
+    renderGame();
+    updateMoveCount();
+  } else {
+    // 스톡 리셋 (waste -> stock)
+    while(piles.waste.length > 0) {
+      const card = piles.waste.pop();
+      card.faceUp = false;
+      piles.stock.push(card);
+    }
+    moveHistory.push({action:'resetStock'});
+    renderGame();
+    updateMoveCount();
+  }
+}
+
+// 자동 파운데이션 이동 (더블클릭 또는 힌트 등)
+function autoMoveToFoundation(e) {
+  const cardEl = e.currentTarget;
+  const pileType = cardEl.dataset.pileType;
+  if (pileType !== 'tableau' && pileType !== 'waste') return;
+  const pileIndex = parseInt(cardEl.dataset.pileIndex);
+  const cardIndex = parseInt(cardEl.dataset.cardIndex);
+  let card;
+  if (pileType === 'waste') card = piles.waste[piles.waste.length-1];
+  else card = piles.tableau[pileIndex][cardIndex];
+
+  const idx = values.indexOf(card.value);
+
+  for (let i=0; i<4; i++) {
+    const foundation = piles.foundation[i];
+    if ((foundation.length === 0 && card.value === 'A') ||
+      (foundation.length > 0 && foundation[foundation.length-1].suit === card.suit &&
+       values.indexOf(foundation[foundation.length-1].value) === idx-1)) {
+      // 이동 가능
+      if (pileType === 'tableau') {
+        piles.tableau[pileIndex].splice(cardIndex, 1);
+        // 앞 카드 뒤집기
+        if (piles.tableau[pileIndex].length > 0) {
+          let lastCard = piles.tableau[pileIndex][piles.tableau[pileIndex].length -1];
+          if (!lastCard.faceUp) {
+            lastCard.faceUp = true;
+            updateScore(5);
+          }
+        }
+      } else if (pileType === 'waste') {
+        piles.waste.pop();
+      }
+      piles.foundation[i].push(card);
+      updateScore(50);
+      moveHistory.push({
+        from: {pileType, pileIndex, cardIndex},
+        to: {pileType:'foundation', pileIndex:i},
+        cards: [card]
+      });
+      renderGame();
+      updateMoveCount();
+      checkWin();
+      return;
+    }
+  }
+}
+
+// 자동 완성 - 가능한 카드 모두 파운데이션으로 이동 (뒤집기 처리 포함)
+function autoComplete() {
+  let moved = false;
+  // tableau에서 이동 가능한 카드 체크
+  outer:
+  for(let i=0; i<7; i++) {
+    for(let j=0; j<piles.tableau[i].length; j++) {
+      const card = piles.tableau[i][j];
+      if (!card.faceUp) continue;
+      const idx = values.indexOf(card.value);
+      for(let f=0; f<4; f++) {
+        const foundation = piles.foundation[f];
+        if ((foundation.length === 0 && card.value === 'A') ||
+            (foundation.length > 0 &&
+             foundation[foundation.length-1].suit === card.suit &&
+             values.indexOf(foundation[foundation.length-1].value) === idx-1)) {
+          piles.tableau[i].splice(j, 1);
+          piles.foundation[f].push(card);
+          updateScore(50);
+          moveHistory.push({
+            from: {pileType:'tableau', pileIndex:i, cardIndex:j},
+            to: {pileType:'foundation', pileIndex:f},
+            cards: [card]
+          });
+          // 뒤집기 가능한 카드 있으면 뒤집기
+          if (piles.tableau[i].length > 0) {
+            let lastCard = piles.tableau[i][piles.tableau[i].length-1];
+            if (!lastCard.faceUp) {
+              lastCard.faceUp = true;
+              updateScore(5);
+            }
+          }
+          moved = true;
+          break outer;
+        }
+      }
+    }
+  }
+  // waste에서 이동 가능한 카드 체크
+  if (!moved && piles.waste.length > 0) {
+    let card = piles.waste[piles.waste.length-1];
+    const idx = values.indexOf(card.value);
+    for(let f=0; f<4; f++) {
+      const foundation = piles.foundation[f];
+      if ((foundation.length === 0 && card.value === 'A') ||
+          (foundation.length > 0 &&
+           foundation[foundation.length-1].suit === card.suit &&
+           values.indexOf(foundation[foundation.length-1].value) === idx-1)) {
+        piles.waste.pop();
+        piles.foundation[f].push(card);
+        updateScore(50);
+        moveHistory.push({
+          from: {pileType:'waste', pileIndex:0, cardIndex:piles.waste.length},
+          to: {pileType:'foundation', pileIndex:f},
+          cards: [card]
+        });
+        moved = true;
+        break;
+      }
+    }
+  }
+  if (moved) {
+    renderGame();
+    updateMoveCount();
+    setTimeout(autoComplete, 300);
+  } else {
+    checkWin();
+  }
+}
+
+// 점수 갱신
+function updateScore(delta) {
+  if(delta !== 0) score += delta;
+  document.getElementById('score').innerText = score;
+}
+
+// 이동 수 갱신
+function updateMoveCount() {
+  document.getElementById('moveCount').innerText = moveHistory.length;
+}
+
+// 이동 되돌리기
+function undoMove() {
+  if (moveHistory.length === 0) return alert('더 이상 되돌릴 수 없습니다.');
+  const last = moveHistory.pop();
+
+  if (last.action === 'draw') {
+    if (piles.waste.length > 0) {
+      const card = piles.waste.pop();
+      card.faceUp = false;
+      piles.stock.push(card);
+      renderGame();
+    }
+  } else if (last.action === 'resetStock') {
+    while(piles.stock.length > 0) {
+      const card = piles.stock.pop();
+      card.faceUp = true;
+      piles.waste.push(card);
+    }
+    renderGame();
+  } else if (last.cards && last.cards.length > 0) {
+    const toPile = piles[last.to.pileType];
+    if (last.to.pileType === 'foundation' || last.to.pileType === 'tableau') {
+      toPile[last.to.pileIndex].splice(-last.cards.length, last.cards.length);
+    } else if (last.to.pileType === 'waste') {
+      toPile.pop();
+    }
+
+    const fromPile = piles[last.from.pileType];
+    if (last.from.pileType === 'tableau') {
+      fromPile[last.from.pileIndex].splice(last.from.cardIndex, 0, ...last.cards);
+    } else if (last.from.pileType === 'waste') {
+      fromPile.push(...last.cards);
+    } else if (last.from.pileType === 'foundation') {
+      fromPile[last.from.pileIndex].splice(last.from.cardIndex, 0, ...last.cards);
+    }
+    updateScore(-10 * last.cards.length);
+    renderGame();
+  }
+  updateMoveCount();
+}
+
+// 승리 체크
+function checkWin() {
+  if (piles.foundation.every(f => f.length === 13)) {
+    setTimeout(() => alert('🎉 축하합니다! 승리했습니다!'), 100);
+  }
+}
+
+// 게임 저장
+function saveGame() {
+  try {
+    const state = JSON.stringify({piles, score, moveHistory});
+    localStorage.setItem('solitaireSave', state);
+    alert('게임이 저장되었습니다.');
+  } catch {
+    alert('저장에 실패했습니다.');
+  }
+}
+
+// 게임 불러오기
+function loadGame() {
+  try {
+    const stateStr = localStorage.getItem('solitaireSave');
+    if (!stateStr) return alert('저장된 게임이 없습니다.');
+    const state = JSON.parse(stateStr);
+    piles = state.piles;
+    score = state.score;
+    moveHistory = state.moveHistory;
+    renderGame();
+    updateScore(0);
+    updateMoveCount();
+    alert('게임이 불러와졌습니다.');
+  } catch {
+    alert('불러오기에 실패했습니다.');
+  }
+}
+
+// 테마 변경
+function toggleTheme() {
+  document.body.classList.toggle('dark');
+}
+
+// 카드 글꼴 변경
+function changeCardStyle(font) {
+  document.documentElement.style.setProperty('--card-font', font);
+}
+
+// 힌트 기능: 가능한 첫 이동 찾아서 카드 강조 (3초 후 제거)
+function showHint() {
+  clearHints();
+
+  // 1) 빈 Foundation 자리에 A 카드 놓기 가능한지 찾기
+  for (let f = 0; f < 4; f++) {
+    if (piles.foundation[f].length === 0) {
+      // tableau에서 A 카드 찾기
+      for (let i = 0; i < 7; i++) {
+        for (let j = 0; j < piles.tableau[i].length; j++) {
+          const card = piles.tableau[i][j];
+          if (card.faceUp && card.value === 'A') {
+            highlightCard('tableau', i, j);
+            setTimeout(clearHints, 3000);
+            return;
+          }
+        }
+      }
+      // waste에서 A 카드 찾기
+      if (piles.waste.length > 0) {
+        const card = piles.waste[piles.waste.length - 1];
+        if (card.value === 'A') {
+          highlightCard('waste', 0, piles.waste.length - 1);
+          setTimeout(clearHints, 3000);
+          return;
+        }
+      }
+    }
+  }
+
+  // 2) Foundation에 다음 카드 놓기 가능한지 찾기
+  for (let f = 0; f < 4; f++) {
+    if (piles.foundation[f].length > 0) {
+      const topCard = piles.foundation[f][piles.foundation[f].length - 1];
+      const nextIndex = values.indexOf(topCard.value) + 1;
+      if (nextIndex >= values.length) continue; // K 다음은 없음
+      const nextValue = values[nextIndex];
+
+      // tableau에서 다음 카드 찾기 (같은 무늬)
+      for (let i = 0; i < 7; i++) {
+        for (let j = 0; j < piles.tableau[i].length; j++) {
+          const card = piles.tableau[i][j];
+          if (card.faceUp && card.value === nextValue && card.suit === topCard.suit) {
+            highlightCard('tableau', i, j);
+            setTimeout(clearHints, 3000);
+            return;
+          }
+        }
+      }
+      // waste에서 다음 카드 찾기
+      if (piles.waste.length > 0) {
+        const card = piles.waste[piles.waste.length - 1];
+        if (card.value === nextValue && card.suit === topCard.suit) {
+          highlightCard('waste', 0, piles.waste.length - 1);
+          setTimeout(clearHints, 3000);
+          return;
+        }
+      }
+    }
+  }
+
+  // 3) tableau 내 이동 가능한 카드 찾기
+  for(let from = 0; from < 7; from++) {
+    for(let cardIdx = 0; cardIdx < piles.tableau[from].length; cardIdx++) {
+      const card = piles.tableau[from][cardIdx];
+      if (!card.faceUp) continue;
+      for(let to = 0; to < 7; to++) {
+        if (to === from) continue;
+        if (canMoveCards([card], 'tableau', to)) {
+          highlightCard('tableau', from, cardIdx);
+          setTimeout(clearHints, 3000);
+          return;
+        }
+      }
+    }
+  }
+
+  alert('가능한 이동이 없습니다.');
+}
+
+function highlightCard(pileType, pileIndex, cardIndex) {
+  const cards = document.querySelectorAll(`.card[data-pile-type="${pileType}"][data-pile-index="${pileIndex}"][data-card-index="${cardIndex}"]`);
+  cards.forEach(card => card.classList.add('hint'));
+}
+function clearHints() {
+  document.querySelectorAll('.card.hint').forEach(card => card.classList.remove('hint'));
+}
+
+// 게임 시작
+function startGame() {
+  score = 0;
+  moveHistory = [];
+  piles = { stock: [], waste: [], foundation: [[],[],[],[]], tableau: [[],[],[],[],[],[],[]] };
+
+  updateScore(0);
+  updateMoveCount();
+
+  const deck = createDeck();
+  shuffleDeck(deck);
+  piles.stock = deck;
+
+  // tableau에 카드 분배 (1~7장, 마지막 카드만 앞면)
+  for(let i=0; i<7; i++) {
+    for(let j=0; j<=i; j++) {
+      let card = piles.stock.pop();
+      card.faceUp = (j === i);
+      piles.tableau[i].push(card);
+    }
+  }
+  renderGame();
+}
+
+window.onload = () => startGame();
+
+</script>
+</body>
+</html>
